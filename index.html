@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Neutron Moderation — Record Anytime</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #1a1a2e; color: #e0e0e0; font-family: system-ui, sans-serif; height: 100%; }
+  #app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  #header { padding: 6px 10px; font-size: 1rem; color: #a0d0ff; flex: 0 0 auto; }
+  #main { flex: 1 1 auto; display: flex; min-height: 0; }
+  #canvas-wrap { flex: 1 1 auto; position: relative; min-width: 0; min-height: 0; display: flex; align-items: stretch; justify-content: stretch; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; background: #0f0f1a; border: 1px solid #3a3a5a; border-radius: 6px; }
+  #panel { flex: 0 0 300px; background: #20203a; border-left: 1px solid #3a3a5a; padding: 10px 12px; font-size: 0.85rem; overflow-y: auto; box-sizing: border-box; }
+  #panel label { display: block; margin: 8px 0 3px; color: #b0b0d0; }
+  #panel input[type=range] { width: 100%; }
+  #panel .val { color: #a0d0ff; font-weight: 600; }
+  #panel button { margin-top: 8px; width: 100%; padding: 10px 6px; background: #3a6ea5; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.95rem; }
+  #panel button:hover { background: #4a8ec5; }
+  #panel button.secondary { background: #5a3a6a; }
+  #panel button.burst { background: #2a7a4a; }
+  #panel button.burst:hover { background: #3a9a5a; }
+  #panel button.record { background: #a5662a; font-weight: 600; }
+  #panel button.record:hover { background: #c57e3a; }
+  #readout { margin-top: 10px; font-size: 0.82rem; line-height: 1.6; color: #c0c0e0; }
+  #readout b { color: #a0d0ff; }
+  .hint { font-size: 0.74rem; color: #8080a0; margin-top: 5px; }
+  .toggle { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 0.8rem; color: #b0b0d0; }
+  select { width: 100%; margin-top: 3px; background: #2a2a4a; color: #e0e0e0; border: 1px solid #3a3a5a; border-radius: 4px; padding: 6px; font-size: 0.85rem; }
+  @media (max-width: 700px) { #main { flex-direction: column; } #panel { flex: 0 0 auto; max-height: 55vh; border-left: none; border-top: 1px solid #3a3a5a; } }
+
+  #results-section {
+    margin-top: 14px;
+    padding: 10px;
+    background: #2a2a4a;
+    border: 1px solid #4a4a6a;
+    border-radius: 6px;
+  }
+  #results-section h3 {
+    margin: 0 0 8px;
+    font-size: 0.9rem;
+    color: #ffaa44;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  #results-section .row {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  #results-section .row button {
+    flex: 1;
+    margin-top: 0;
+    padding: 9px 4px;
+    font-size: 0.85rem;
+  }
+  #record-status {
+    margin-top: 6px;
+    font-size: 0.78rem;
+    color: #a0d0ff;
+    min-height: 1.2em;
+  }
+
+  #table-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+  }
+  #table-modal.open { display: flex; }
+  #table-card {
+    background: #20203a;
+    border: 1px solid #5a5a7a;
+    border-radius: 8px;
+    max-width: 95vw;
+    max-height: 90vh;
+    padding: 18px 20px;
+    overflow: auto;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+  }
+  #table-card h2 { margin: 0 0 12px; font-size: 1.05rem; color: #ffaa44; }
+  #table-card .actions { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
+  #table-card .actions button {
+    padding: 9px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    background: #3a6ea5;
+    color: #fff;
+  }
+  #table-card .actions button.secondary { background: #a5662a; }
+  #table-card .actions button.close { background: #444466; margin-left: auto; }
+  table.results {
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    min-width: 100%;
+  }
+  table.results th, table.results td {
+    border: 1px solid #3a3a5a;
+    padding: 6px 10px;
+    text-align: center;
+    white-space: nowrap;
+  }
+  table.results th {
+    background: #2a2a4a;
+    color: #a0d0ff;
+    position: sticky;
+    top: 0;
+  }
+  table.results td.rowlabel {
+    text-align: left;
+    background: #26263f;
+    color: #c0c0e0;
+    font-weight: 600;
+    position: sticky;
+    left: 0;
+  }
+  table.results td.fission { color: #ffdd88; }
+  table.results td.leak { color: #aaffaa; }
+  table.results td.capture { color: #ffaaff; }
+  table.results td.thermal { color: #a0d0ff; }
+  table.results td.active-thermal { color: #ffcc66; }
+  table.results td.active-fast { color: #ff8866; }
+  table.results td.empty { color: #606080; }
+  table.results td.run-col { border-left: 2px solid #5a5a7a; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">Neutron Moderation — Record Anytime</div>
+  <div id="main">
+    <div id="canvas-wrap"><canvas id="cv"></canvas></div>
+    <div id="panel">
+      <label>Material</label>
+      <select id="moderator">
+        <option value="lightwater" selected>Light Water (H₂O)  · A≈1</option>
+        <option value="heavywater">Heavy Water (D₂O)  · A≈2</option>
+        <option value="beryllium">Beryllium (Be)  · A≈9</option>
+        <option value="boron">Boron (B)  · A≈10</option>
+        <option value="graphite">Graphite (C)  · A≈12</option>
+        <option value="manganese">Manganese (Mn)  · A≈55</option>
+        <option value="silver">Silver (Ag)  · A≈108</option>
+        <option value="cadmium">Cadmium (Cd)  · A≈112</option>
+        <option value="indium">Indium (In)  · A≈115</option>
+        <option value="hafnium">Hafnium (Hf)  · A≈178</option>
+        <option value="lead">Lead (Pb)  · A≈207</option>
+        <option value="bismuth">Bismuth (Bi)  · A≈209</option>
+      </select>
+
+      <label>Moderator thickness</label>
+      <input type="range" id="thickness" min="100" max="1000" value="400" step="10">
+
+      <label>Neutron count: <span class="val" id="ringVal">16</span></label>
+      <input type="range" id="ring" min="4" max="48" value="16" step="1">
+
+      <label>Initial neutron energy (MeV): <span class="val" id="energyVal">2.00</span></label>
+      <input type="range" id="energy" min="-3" max="1" value="0.3" step="0.01">
+
+      <label>Thermal threshold (eV): <span class="val" id="thermalVal">10.0</span></label>
+      <input type="range" id="thermal" min="0" max="3" value="1" step="0.05">
+
+      <label class="toggle"><input type="checkbox" id="trace" checked> Show neutron path traces</label>
+      <label class="toggle"><input type="checkbox" id="fuzzy" checked> Show cross-section halo</label>
+      <label class="toggle"><input type="checkbox" id="jitter" checked> Decorrelate ring &amp; lattice</label>
+
+      <button id="burst" class="burst">Fire neutrons (Space)</button>
+      <button id="reset" class="secondary">Reset (R)</button>
+
+      <div id="readout">
+        Active neutrons: <b>0</b><br>
+        Fissions: <b>0</b><br>
+        Leaked: <b>0</b><br>
+        Captured: <b>0</b><br>
+        Collisions to thermal: <b>—</b>
+      </div>
+      <div class="hint">Space = fire neutrons. R = reset.</div>
+
+      <div id="results-section">
+        <h3>Results</h3>
+        <div class="row">
+          <button id="record" class="record">Record results</button>
+        </div>
+        <div class="row">
+          <button id="show-table" class="secondary">View table</button>
+          <button id="clear-table" class="secondary" style="background:#6a2a2a;">Clear</button>
+        </div>
+        <div id="record-status"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="table-modal">
+  <div id="table-card">
+    <h2>Recorded results</h2>
+    <div class="actions">
+      <button id="close-table" class="close">Close</button>
+    </div>
+    <div id="table-container"></div>
+  </div>
+</div>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const wrap = document.getElementById('canvas-wrap');
+
+let W = 800, H = 500, DPR = 1;
+function resizeCanvas() {
+  const rect = wrap.getBoundingClientRect();
+  DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  W = Math.max(200, Math.floor(rect.width));
+  H = Math.max(200, Math.floor(rect.height));
+  cv.width = Math.floor(W * DPR);
+  cv.height = Math.floor(H * DPR);
+  cv.style.width = W + 'px';
+  cv.style.height = H + 'px';
+  reset();
+}
+
+const U_KG = 1.66053906660e-27;
+const J_PER_MEV = 1.602176634e-13;
+const NEUTRON_MASS_U = 1.00866491595;
+
+const MATERIALS = {
+  lightwater: { A: 1,   scatter: 20.0, absorbLow: 0.333,  absorbHigh: 0.333,  Etrans: 0.025, lattice: 20, label: 'Light Water (H₂O)' },
+  heavywater: { A: 2,   scatter: 3.4,  absorbLow: 0.0005, absorbHigh: 0.0005, Etrans: 0.025, lattice: 22, label: 'Heavy Water (D₂O)' },
+  beryllium:  { A: 9,   scatter: 7.0,  absorbLow: 0.0092, absorbHigh: 0.0092, Etrans: 0.025, lattice: 18, label: 'Beryllium (Be)' },
+  boron:      { A: 10,  scatter: 4.0,  absorbLow: 767.0,  absorbHigh: 767.0,  Etrans: 0.025, lattice: 16, label: 'Boron (B)' },
+  graphite:   { A: 12,  scatter: 4.7,  absorbLow: 0.0035, absorbHigh: 0.0035, Etrans: 0.025, lattice: 17, label: 'Graphite (C)' },
+  manganese:  { A: 55,  scatter: 2.5,  absorbLow: 13.0,   absorbHigh: 2.5,    Etrans: 0.1,   lattice: 24, label: 'Manganese (Mn)' },
+  silver:     { A: 108, scatter: 5.0,  absorbLow: 63.0,   absorbHigh: 2.5,    Etrans: 1.0,   lattice: 30, label: 'Silver (Ag)' },
+  cadmium:    { A: 112, scatter: 6.0,  absorbLow: 2520.0, absorbHigh: 50.0,   Etrans: 0.5,   lattice: 31, label: 'Cadmium (Cd)' },
+  indium:     { A: 115, scatter: 2.0,  absorbLow: 196.0,  absorbHigh: 1.5,    Etrans: 1.0,   lattice: 31, label: 'Indium (In)' },
+  hafnium:    { A: 178, scatter: 6.0,  absorbLow: 100.0,  absorbHigh: 3.0,    Etrans: 1.0,   lattice: 36, label: 'Hafnium (Hf)' },
+  lead:       { A: 207, scatter: 11.4, absorbLow: 0.0056, absorbHigh: 0.0056, Etrans: 0.025, lattice: 40, label: 'Lead (Pb)' },
+  bismuth:    { A: 209, scatter: 9.0,  absorbLow: 0.0003, absorbHigh: 0.0003, Etrans: 0.025, lattice: 40, label: 'Bismuth (Bi)' }
+};
+const MATERIAL_ORDER = ['lightwater','heavywater','beryllium','boron','graphite','manganese','silver','cadmium','indium','hafnium','lead','bismuth'];
+
+function currentMaterialKey() { return document.getElementById('moderator').value; }
+function currentMaterial() { return MATERIALS[currentMaterialKey()]; }
+
+let records = [];
+
+const HALO_BASE = 6.5;
+const HALO_MIN = 1.5;
+const NEUTRON_RADIUS_W = 2.5;
+const FORWARD_BIAS = 0.40;
+const HIT_COOLDOWN = 8;
+const MAX_PATH = 400;
+const ROD_WIDTH = 70;
+
+const LATTICE_JITTER_FRAC = 0.08;
+const ANGLE_JITTER_FRAC = 0.5;
+const ENERGY_JITTER_FRAC = 0.02;
+const SOURCE_RADIUS_FRAC = 0.3;
+
+let moderatorThickness = 400;
+let ringCount = 16;
+let initialEnergyMeV = 2.0;
+let thermalEnergyMeV = 1e-5;
+
+let latticeSpacing = 20;
+let atomsAcross = 20;
+let zoom = 1;
+let nuclei = [];
+let neutrons = [];
+let explosions = [];
+let exits = [];
+let captures = [];
+let collisions = 0;
+let fissionCount = 0;
+let leakCount = 0;
+let captureCount = 0;
+let animating = false;
+let frameCount = 0;
+
+let GRID_CELL = 25;
+let gridCols = 0, gridRows = 0;
+let grid = [];
+
+const PALETTE = [
+  '#66ccff', '#ffaa44', '#88ff88', '#ff66aa', '#aa88ff',
+  '#ffdd44', '#44ffcc', '#ff8844', '#88aaff', '#ccff66',
+  '#ff4488', '#44ccff', '#aaffaa', '#ffcc88', '#aa66ff',
+  '#66ffaa', '#ff6666', '#88ccff', '#ccff88', '#ff88cc',
+  '#ffaa88', '#88ffaa', '#ff88aa', '#88aaff', '#aaff88',
+  '#ffcc44', '#44ffaa', '#aa44ff', '#44aaff', '#ff44aa',
+  '#88cc44', '#cc4488', '#44cc88', '#aa8844', '#4488aa',
+  '#ccaa88', '#88aacc', '#aacc88', '#cc88aa', '#88ccaa',
+  '#aa88cc', '#ccaa44', '#44aacc', '#aacc44', '#cc44aa',
+  '#44ccaa', '#aa44cc', '#88aaff', '#ff88aa'
+];
+
+let LEFT_ROD_RIGHT = 70;
+let RIGHT_ROD_LEFT = 600;
+let TOP_ROD_BOTTOM = 70;
+let BOTTOM_ROD_TOP = 400;
+
+let sourceX = 400, sourceY = 250;
+
+const SPRING_K = 0.008;
+const DAMPING = 0.45;
+
+function visualSpeed(v_real) {
+  if (v_real <= 0) return 0;
+  const logV = Math.log10(v_real);
+  const logVmax = Math.log10(3e7);
+  const logVmin = Math.log10(1e3);
+  const frac = (logV - logVmin) / (logVmax - logVmin);
+  return 1 + 5 * Math.max(0, Math.min(1, frac));
+}
+function speedFromEnergy(E_MeV, massU) {
+  return Math.sqrt(2 * E_MeV * J_PER_MEV / (massU * U_KG));
+}
+function energyFromSpeed(v, massU) {
+  return (0.5 * massU * U_KG * v * v) / J_PER_MEV;
+}
+function eVfromMeV(E_MeV) { return E_MeV * 1e6; }
+function rand(a, b) { return a + Math.random() * (b - a); }
+
+function haloRadiusWorldAtScatter(scatterBarns) {
+  return Math.max(HALO_MIN, HALO_BASE * Math.sqrt(scatterBarns / 20.0));
+}
+function dotRadiusWorld(A) {
+  return Math.max(1.0, Math.min(2.2, 1.0 + 0.25 * Math.log10(A + 1)));
+}
+
+let fissionSprite = null;
+function makeFissionSprite() {
+  const size = 44;
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const g = c.getContext('2d');
+  const cx = size / 2, cy = size / 2;
+  const radius = 18;
+  const grad = g.createRadialGradient(cx, cy, 0, cx, cy, radius);
+  grad.addColorStop(0, 'rgba(255, 255, 220, 0.95)');
+  grad.addColorStop(0.4, 'rgba(255, 210, 80, 0.7)');
+  grad.addColorStop(0.8, 'rgba(255, 120, 40, 0.35)');
+  grad.addColorStop(1, 'rgba(255, 60, 20, 0)');
+  g.beginPath();
+  g.arc(cx, cy, radius, 0, Math.PI * 2);
+  g.fillStyle = grad;
+  g.fill();
+  g.strokeStyle = 'rgba(255, 230, 150, 0.85)';
+  g.lineWidth = 1.5;
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    g.beginPath();
+    g.moveTo(cx + Math.cos(a) * 6, cy + Math.sin(a) * 6);
+    g.lineTo(cx + Math.cos(a) * 16, cy + Math.sin(a) * 16);
+    g.stroke();
+  }
+  g.fillStyle = '#ffe0a0';
+  g.font = 'bold 9px system-ui';
+  g.textAlign = 'center';
+  g.fillText('FISSION', cx, cy + 4);
+  fissionSprite = c;
+}
+makeFissionSprite();
+
+function computeLayout() {
+  const mat = currentMaterial();
+  latticeSpacing = mat.lattice;
+  atomsAcross = Math.max(1, Math.round(moderatorThickness / latticeSpacing));
+
+  const regionWidth = moderatorThickness;
+  const desiredWorldWidth = regionWidth + 2 * ROD_WIDTH + 40;
+  zoom = Math.min(1, W / desiredWorldWidth);
+  const worldW = W / zoom;
+  const margin = (worldW - regionWidth) / 2;
+  LEFT_ROD_RIGHT = margin;
+  RIGHT_ROD_LEFT = margin + regionWidth;
+
+  const worldH = H / zoom;
+  TOP_ROD_BOTTOM = 70;
+  BOTTOM_ROD_TOP = worldH - 70;
+
+  sourceX = (LEFT_ROD_RIGHT + RIGHT_ROD_LEFT) / 2;
+  sourceY = (TOP_ROD_BOTTOM + BOTTOM_ROD_TOP) / 2;
+}
+
+function buildGrid() {
+  const mat = currentMaterial();
+  const maxHalo = haloRadiusWorldAtScatter(mat.scatter);
+  GRID_CELL = Math.max(8, latticeSpacing + 2 * maxHalo);
+  const worldW = W / zoom;
+  const worldH = H / zoom;
+  gridCols = Math.ceil(worldW / GRID_CELL) + 2;
+  gridRows = Math.ceil(worldH / GRID_CELL) + 2;
+  grid = [];
+  for (let r = 0; r < gridRows; r++) {
+    grid.push([]);
+    for (let c = 0; c < gridCols; c++) grid[r].push([]);
+  }
+  for (const n of nuclei) {
+    const c = Math.min(gridCols - 1, Math.max(0, Math.floor(n.x / GRID_CELL)));
+    const r = Math.min(gridRows - 1, Math.max(0, Math.floor(n.y / GRID_CELL)));
+    grid[r][c].push(n);
+  }
+}
+
+function nearbyNuclei(x, y) {
+  const cx = Math.floor(x / GRID_CELL);
+  const cy = Math.floor(y / GRID_CELL);
+  const result = [];
+  for (let dr = -1; dr <= 1; dr++) {
+    const r = cy + dr;
+    if (r < 0 || r >= gridRows) continue;
+    for (let dc = -1; dc <= 1; dc++) {
+      const c = cx + dc;
+      if (c < 0 || c >= gridCols) continue;
+      const cell = grid[r][c];
+      for (let i = 0; i < cell.length; i++) result.push(cell[i]);
+    }
+  }
+  return result;
+}
+
+function buildLattice() {
+  computeLayout();
+  nuclei = [];
+  const mat = currentMaterial();
+  const spacing = latticeSpacing;
+  const rDot = dotRadiusWorld(mat.A);
+  const rSigma = haloRadiusWorldAtScatter(mat.scatter);
+  const jitterOn = document.getElementById('jitter').checked;
+  const holeR = Math.max(2 * spacing, 30);
+  const jitterAmp = jitterOn ? spacing * LATTICE_JITTER_FRAC : 0;
+
+  for (let row = 0; ; row++) {
+    const y = TOP_ROD_BOTTOM + 4 + row * spacing * 0.866;
+    if (y > BOTTOM_ROD_TOP - 4) break;
+    const xOffset = (row % 2) * spacing * 0.5;
+    for (let x = LEFT_ROD_RIGHT + spacing * 0.5 + xOffset; x < RIGHT_ROD_LEFT - spacing * 0.3; x += spacing) {
+      if (Math.hypot(x - sourceX, y - sourceY) < holeR) continue;
+      const jx = jitterOn ? rand(-jitterAmp, jitterAmp) : 0;
+      const jy = jitterOn ? rand(-jitterAmp, jitterAmp) : 0;
+      const px = x + jx;
+      const py = y + jy;
+      nuclei.push({
+        x: px, y: py, x0: px, y0: py,
+        vx: 0, vy: 0,
+        rDot, rSigma,
+        A: mat.A,
+        scatter: mat.scatter,
+        absorbLow: mat.absorbLow,
+        absorbHigh: mat.absorbHigh,
+        Etrans: mat.Etrans,
+        lastHitFrame: -1000
+      });
+    }
+  }
+  buildGrid();
+}
+
+function reset() {
+  collisions = 0;
+  fissionCount = 0;
+  leakCount = 0;
+  captureCount = 0;
+  animating = false;
+  neutrons = [];
+  explosions = [];
+  exits = [];
+  captures = [];
+  frameCount = 0;
+  buildLattice();
+  updateReadout();
+  draw();
+}
+
+function makeNeutron(angle, energyMeV) {
+  const v0 = speedFromEnergy(energyMeV, NEUTRON_MASS_U);
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  const startX = sourceX + dx * 8;
+  const startY = sourceY + dy * 8;
+  const vPix = visualSpeed(v0);
+  return {
+    x: startX, y: startY,
+    vx: dx * vPix,
+    vy: dy * vPix,
+    massU: NEUTRON_MASS_U,
+    radius: NEUTRON_RADIUS_W,
+    v_real: v0,
+    history: [energyMeV],
+    path: [{ x: startX, y: startY }],
+    colour: '#66ccff',
+    thermalised: false,
+    absorbed: false,
+    collisionsToThermal: null
+  };
+}
+
+function fireRing() {
+  collisions = 0;
+  fissionCount = 0;
+  leakCount = 0;
+  captureCount = 0;
+  neutrons = [];
+  explosions = [];
+  exits = [];
+  captures = [];
+  frameCount = 0;
+  buildLattice();
+
+  const jitterOn = document.getElementById('jitter').checked;
+  const angularStep = (2 * Math.PI) / ringCount;
+  const angleJitterAmp = jitterOn ? angularStep * ANGLE_JITTER_FRAC : 0;
+  const sourceRadius = jitterOn ? latticeSpacing * SOURCE_RADIUS_FRAC : 0;
+  const energyJitterAmp = jitterOn ? initialEnergyMeV * ENERGY_JITTER_FRAC : 0;
+
+  for (let i = 0; i < ringCount; i++) {
+    const baseAngle = i * angularStep;
+    const angle = baseAngle + rand(-angleJitterAmp, angleJitterAmp);
+    const rSrc = Math.sqrt(Math.random()) * sourceRadius;
+    const thetaSrc = Math.random() * 2 * Math.PI;
+    const ox = Math.cos(thetaSrc) * rSrc;
+    const oy = Math.sin(thetaSrc) * rSrc;
+    const E = initialEnergyMeV * (1 + rand(-energyJitterAmp, energyJitterAmp));
+
+    const n = makeNeutron(angle, E);
+    n.x += ox;
+    n.y += oy;
+    n.path[0] = { x: n.x, y: n.y };
+    n.colour = PALETTE[i % PALETTE.length];
+    neutrons.push(n);
+  }
+  animating = true;
+  updateReadout();
+  requestAnimationFrame(loop);
+}
+
+function loop() {
+  if (!animating) return;
+  frameCount++;
+
+  for (const n of nuclei) {
+    const kx = n.x0 - n.x;
+    const ky = n.y0 - n.y;
+    n.vx += kx * SPRING_K - n.vx * DAMPING;
+    n.vy += ky * SPRING_K - n.vy * DAMPING;
+    n.x += n.vx;
+    n.y += n.vy;
+    const dxr = n.x - n.x0, dyr = n.y - n.y0;
+    const dr = Math.hypot(dxr, dyr);
+    const maxDisp = latticeSpacing * 0.25;
+    if (dr > maxDisp) {
+      n.x = n.x0 + (dxr / dr) * maxDisp;
+      n.y = n.y0 + (dyr / dr) * maxDisp;
+    }
+  }
+
+  let anyMoving = false;
+  for (const neu of neutrons) {
+    if (neu.absorbed) continue;
+
+    const dir = Math.atan2(neu.vy, neu.vx);
+    const vPix = visualSpeed(neu.v_real);
+    neu.vx = Math.cos(dir) * vPix;
+    neu.vy = Math.sin(dir) * vPix;
+
+    neu.x += neu.vx;
+    neu.y += neu.vy;
+
+    const last = neu.path[neu.path.length - 1];
+    if (!last || Math.hypot(neu.x - last.x, neu.y - last.y) > 2) {
+      neu.path.push({ x: neu.x, y: neu.y });
+      if (neu.path.length > MAX_PATH) neu.path.shift();
+    }
+
+    const E_pre = energyFromSpeed(neu.v_real, NEUTRON_MASS_U);
+    if (!neu.thermalised && E_pre <= thermalEnergyMeV && collisions > 0) {
+      neu.thermalised = true;
+      if (neu.collisionsToThermal === null) {
+        neu.collisionsToThermal = neu.history.length - 1;
+      }
+    }
+
+    const nearby = nearbyNuclei(neu.x, neu.y);
+    for (const n of nearby) {
+      const dx = neu.x - n.x;
+      const dy = neu.y - n.y;
+      const d2 = dx * dx + dy * dy;
+      const minDist = neu.radius + n.rSigma;
+      if (d2 < minDist * minDist && d2 > 1e-6 && frameCount - n.lastHitFrame > HIT_COOLDOWN) {
+        const E_eV = eVfromMeV(energyFromSpeed(neu.v_real, NEUTRON_MASS_U));
+        const useThermal = E_eV < n.Etrans;
+        const absorb = useThermal ? n.absorbLow : n.absorbHigh;
+        const pAbsorb = absorb / (absorb + n.scatter);
+        if (Math.random() < pAbsorb) {
+          neu.absorbed = true;
+          captureCount++;
+          captures.push({ x: neu.x, y: neu.y, t: 0, maxT: 90 });
+          break;
+        }
+        resolveCollision(neu, n, dx, dy, Math.sqrt(d2), minDist);
+        n.lastHitFrame = frameCount;
+        break;
+      }
+    }
+
+    if (neu.absorbed) continue;
+
+    const E_now = energyFromSpeed(neu.v_real, NEUTRON_MASS_U);
+    const atTopRod = neu.y < TOP_ROD_BOTTOM + neu.radius;
+    const atBottomRod = neu.y > BOTTOM_ROD_TOP - neu.radius;
+    const atLeftRod = neu.x < LEFT_ROD_RIGHT + neu.radius;
+    const atRightRod = neu.x > RIGHT_ROD_LEFT - neu.radius;
+
+    if (atTopRod || atBottomRod || atLeftRod || atRightRod) {
+      if (E_now <= thermalEnergyMeV) {
+        neu.absorbed = true;
+        fissionCount++;
+        explosions.push({ x: neu.x, y: neu.y });
+      } else {
+        neu.absorbed = true;
+        leakCount++;
+        exits.push({ x: neu.x, y: neu.y, t: 0, maxT: 90 });
+      }
+      continue;
+    }
+
+    if (!neu.absorbed) anyMoving = true;
+  }
+
+  for (const ex of exits) ex.t++;
+  exits = exits.filter(ex => ex.t < ex.maxT);
+  for (const ex of captures) ex.t++;
+  captures = captures.filter(ex => ex.t < ex.maxT);
+
+  if (!anyMoving && explosions.length === 0 && exits.length === 0 && captures.length === 0) {
+    animating = false;
+  }
+
+  draw();
+  updateReadout();
+  if (animating) requestAnimationFrame(loop);
+}
+
+function resolveCollision(neu, n, dx, dy, dist, minDist) {
+  const nx = dx / dist, ny = dy / dist;
+  const overlap = minDist - dist;
+  neu.x += nx * overlap * 0.5;
+  neu.y += ny * overlap * 0.5;
+  n.x -= nx * overlap * 0.5;
+  n.y -= ny * overlap * 0.5;
+
+  const dirIn = Math.atan2(neu.vy, neu.vx);
+  const inDx = Math.cos(dirIn);
+  const inDy = Math.sin(dirIn);
+  const vRealIn = neu.v_real;
+
+  const rvx = inDx * vRealIn - n.vx;
+  const rvy = inDy * vRealIn - n.vy;
+  const vN = rvx * nx + rvy * ny;
+  if (vN > 0) return;
+
+  const m1 = neu.massU;
+  const m2 = n.A;
+  const j = -(1 + 1) * vN / (1/m1 + 1/m2);
+  let vx = inDx * vRealIn + (j / m1) * nx;
+  let vy = inDy * vRealIn + (j / m1) * ny;
+  n.vx -= (j / m2) * nx;
+  n.vy -= (j / m2) * ny;
+
+  const preSpeed = Math.hypot(vx, vy);
+  if (FORWARD_BIAS > 0 && preSpeed > 1e-3) {
+    const blend = 0.15 * FORWARD_BIAS;
+    vx = vx * (1 - blend) + inDx * preSpeed * blend;
+    vy = vy * (1 - blend) + inDy * preSpeed * blend;
+  }
+
+  neu.v_real = Math.hypot(vx, vy);
+  const newDir = Math.atan2(vy, vx);
+  const vPix = visualSpeed(neu.v_real);
+  neu.vx = Math.cos(newDir) * vPix;
+  neu.vy = Math.sin(newDir) * vPix;
+
+  neu.history.push(energyFromSpeed(neu.v_real, NEUTRON_MASS_U));
+  collisions++;
+}
+
+function updateReadout() {
+  let ctt = null;
+  for (const n of neutrons) {
+    if (n.collisionsToThermal !== null) { ctt = n.collisionsToThermal; break; }
+  }
+  const el = document.getElementById('readout');
+  el.innerHTML =
+    `Active neutrons: <b>${neutrons.filter(n => !n.absorbed).length}</b><br>` +
+    `Fissions: <b>${fissionCount}</b><br>` +
+    `Leaked: <b>${leakCount}</b><br>` +
+    `Captured: <b>${captureCount}</b><br>` +
+    `Collisions to thermal: <b>${ctt === null ? '—' : ctt}</b>`;
+}
+
+function drawSpeedometer() {
+  if (neutrons.length === 0) return;
+  const R = 80;
+  const cx = 20 + R;
+  const cy = H - 20 - R - 20;
+  const v_th = speedFromEnergy(thermalEnergyMeV, NEUTRON_MASS_U);
+  const logMin = Math.log10(v_th * 0.4);
+  const logMax = Math.log10(3e7);
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, Math.PI * 0.75, Math.PI * 2.25);
+  ctx.strokeStyle = '#2a2a44';
+  ctx.lineWidth = 16;
+  ctx.stroke();
+
+  const thermalFrac = (Math.log10(v_th) - logMin) / (logMax - logMin);
+  const thermalAng = Math.PI * 0.75 + thermalFrac * Math.PI * 1.5;
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, thermalAng - 0.05, thermalAng + 0.05);
+  ctx.strokeStyle = '#ff8866';
+  ctx.lineWidth = 16;
+  ctx.stroke();
+  const labelR = R - 26;
+  const tlx = cx + labelR * Math.cos(thermalAng);
+  const tly = cy + labelR * Math.sin(thermalAng);
+  ctx.fillStyle = '#ff8866';
+  ctx.font = 'bold 10px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('thermal', tlx, tly + 3);
+
+  for (const neu of neutrons) {
+    if (neu.absorbed) continue;
+    const frac = Math.max(0, Math.min(1, (Math.log10(neu.v_real) - logMin) / (logMax - logMin)));
+    const ang = Math.PI * 0.75 + frac * Math.PI * 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + (R - 6) * Math.cos(ang), cy + (R - 6) * Math.sin(ang));
+    ctx.strokeStyle = neu.colour;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+  ctx.fillStyle = '#a0d0ff';
+  ctx.fill();
+
+  ctx.fillStyle = '#a0d0ff';
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('Neutron speeds', cx, cy + R + 20);
+}
+
+function drawSourceInWorld() {
+  const t = (frameCount % 60) / 60;
+  const r = 8 + 4 * Math.sin(t * Math.PI * 2);
+  ctx.beginPath();
+  ctx.arc(sourceX, sourceY, r, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(170, 102, 255, 0.9)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(sourceX, sourceY, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#aa66ff';
+  ctx.fill();
+}
+
+function drawNucleusInWorld(n) {
+  if (document.getElementById('fuzzy').checked) {
+    const grad = ctx.createRadialGradient(n.x, n.y, n.rSigma * 0.3, n.x, n.y, n.rSigma);
+    grad.addColorStop(0, 'rgba(255, 190, 80, 0.28)');
+    grad.addColorStop(0.7, 'rgba(255, 160, 50, 0.10)');
+    grad.addColorStop(1, 'rgba(255, 140, 30, 0)');
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.rSigma, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+  }
+  ctx.beginPath();
+  ctx.arc(n.x, n.y, n.rDot, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffdd88';
+  ctx.fill();
+}
+
+function drawExitInWorld(ex) {
+  const alpha = 1 - ex.t / ex.maxT;
+  const w = 40, h = 20;
+  ctx.fillStyle = `rgba(40, 60, 40, ${alpha * 0.9})`;
+  ctx.fillRect(ex.x - w/2, ex.y - h/2, w, h);
+  ctx.strokeStyle = `rgba(120, 255, 120, ${alpha})`;
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(ex.x - w/2, ex.y - h/2, w, h);
+  ctx.fillStyle = `rgba(160, 255, 160, ${alpha})`;
+  ctx.font = 'bold 11px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('EXIT →', ex.x, ex.y + 4);
+}
+
+function drawCaptureInWorld(ex) {
+  const alpha = 1 - ex.t / ex.maxT;
+  ctx.beginPath();
+  ctx.arc(ex.x, ex.y, 6, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(255, 120, 255, ${alpha})`;
+  ctx.fill();
+  ctx.strokeStyle = `rgba(255, 180, 255, ${alpha})`;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = `rgba(255, 200, 255, ${alpha})`;
+  ctx.font = 'bold 9px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('CAPTURED', ex.x, ex.y - 12);
+}
+
+function draw() {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#111122';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.scale(zoom, zoom);
+
+  const worldW = W / zoom;
+  const worldH = H / zoom;
+
+  ctx.fillStyle = '#332020';
+  ctx.fillRect(-1, -1, worldW + 2, TOP_ROD_BOTTOM + 1);
+  ctx.strokeStyle = '#ff6644';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, TOP_ROD_BOTTOM);
+  ctx.lineTo(worldW, TOP_ROD_BOTTOM);
+  ctx.stroke();
+
+  ctx.fillStyle = '#332020';
+  ctx.fillRect(-1, BOTTOM_ROD_TOP, worldW + 2, worldH - BOTTOM_ROD_TOP + 1);
+  ctx.beginPath();
+  ctx.moveTo(0, BOTTOM_ROD_TOP);
+  ctx.lineTo(worldW, BOTTOM_ROD_TOP);
+  ctx.stroke();
+
+  ctx.fillStyle = '#332020';
+  ctx.fillRect(-1, TOP_ROD_BOTTOM, LEFT_ROD_RIGHT + 1, BOTTOM_ROD_TOP - TOP_ROD_BOTTOM);
+  ctx.beginPath();
+  ctx.moveTo(LEFT_ROD_RIGHT, TOP_ROD_BOTTOM);
+  ctx.lineTo(LEFT_ROD_RIGHT, BOTTOM_ROD_TOP);
+  ctx.stroke();
+
+  ctx.fillStyle = '#332020';
+  ctx.fillRect(RIGHT_ROD_LEFT, TOP_ROD_BOTTOM, worldW - RIGHT_ROD_LEFT + 1, BOTTOM_ROD_TOP - TOP_ROD_BOTTOM);
+  ctx.beginPath();
+  ctx.moveTo(RIGHT_ROD_LEFT, TOP_ROD_BOTTOM);
+  ctx.lineTo(RIGHT_ROD_LEFT, BOTTOM_ROD_TOP);
+  ctx.stroke();
+
+  ctx.fillStyle = '#ff8866';
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'center';
+  ctx.save();
+  ctx.translate(worldW / 2, TOP_ROD_BOTTOM / 2);
+  ctx.fillText('FUEL ROD', 0, 4);
+  ctx.restore();
+  ctx.save();
+  ctx.translate(worldW / 2, (BOTTOM_ROD_TOP + worldH) / 2);
+  ctx.fillText('FUEL ROD', 0, 4);
+  ctx.restore();
+  ctx.save();
+  ctx.translate(LEFT_ROD_RIGHT / 2, (TOP_ROD_BOTTOM + BOTTOM_ROD_TOP) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('FUEL ROD', 0, 4);
+  ctx.restore();
+  ctx.save();
+  ctx.translate((RIGHT_ROD_LEFT + worldW) / 2, (TOP_ROD_BOTTOM + BOTTOM_ROD_TOP) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('FUEL ROD', 0, 4);
+  ctx.restore();
+
+  if (document.getElementById('trace').checked) {
+    for (const neu of neutrons) {
+      if (neu.path.length < 2) continue;
+      ctx.beginPath();
+      ctx.moveTo(neu.path[0].x, neu.path[0].y);
+      for (let i = 1; i < neu.path.length; i++) {
+        ctx.lineTo(neu.path[i].x, neu.path[i].y);
+      }
+      ctx.strokeStyle = neu.colour + '88';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+
+  for (const n of nuclei) drawNucleusInWorld(n);
+  drawSourceInWorld();
+
+  for (const neu of neutrons) {
+    if (neu.absorbed) continue;
+    ctx.beginPath();
+    ctx.arc(neu.x, neu.y, neu.radius, 0, Math.PI * 2);
+    ctx.fillStyle = neu.colour;
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  for (const ex of explosions) {
+    ctx.drawImage(fissionSprite, ex.x - fissionSprite.width / 2, ex.y - fissionSprite.height / 2);
+  }
+  for (const ex of exits) drawExitInWorld(ex);
+  for (const ex of captures) drawCaptureInWorld(ex);
+
+  ctx.restore();
+
+  const m = document.getElementById('moderator').selectedOptions[0].textContent;
+  ctx.fillStyle = '#8080a0';
+  ctx.font = '12px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(m, 8, 18);
+  ctx.fillText('Fissions: ' + fissionCount + '   Leaked: ' + leakCount + '   Captured: ' + captureCount, 8, 34);
+
+  drawSpeedometer();
+
+  if (neutrons.length > 0) {
+    const x0 = W - 320, y0 = 12, w = 300, h = 120;
+    ctx.fillStyle = 'rgba(20,20,40,0.9)';
+    ctx.fillRect(x0, y0, w, h);
+    ctx.strokeStyle = '#3a3a5a';
+    ctx.strokeRect(x0, y0, w, h);
+
+    const logMin = Math.log10(thermalEnergyMeV);
+    const logMax = Math.log10(2.0);
+
+    ctx.strokeStyle = '#ff886688';
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(x0 + 4, y0 + h - 8);
+    ctx.lineTo(x0 + w - 4, y0 + h - 8);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    let maxLen = 1;
+    for (const neu of neutrons) maxLen = Math.max(maxLen, neu.history.length);
+
+    for (const neu of neutrons) {
+      if (neu.history.length < 2) continue;
+      ctx.beginPath();
+      for (let i = 0; i < neu.history.length; i++) {
+        const x = x0 + 6 + (i / Math.max(1, maxLen - 1)) * (w - 12);
+        const logE = Math.log10(Math.max(neu.history[i], thermalEnergyMeV));
+        const y = y0 + h - 8 - ((logE - logMin) / (logMax - logMin)) * (h - 16);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = neu.colour;
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = '#a0d0ff';
+    ctx.font = '10px system-ui';
+    ctx.textAlign = 'left';
+    ctx.fillText('Energy vs collision (log)', x0 + 6, y0 + 12);
+  }
+}
+
+/* ---------- Recording ---------- */
+function countActive() {
+  let thermal = 0, fast = 0;
+  for (const neu of neutrons) {
+    if (neu.absorbed) continue;
+    if (neu.v_real <= thermalEnergyMeV * 0 + 0) { /* never true; use energy below */ }
+    const E = energyFromSpeed(neu.v_real, NEUTRON_MASS_U);
+    if (E <= thermalEnergyMeV) thermal++;
+    else fast++;
+  }
+  return { thermal, fast };
+}
+
+function recordResults() {
+  // Record unconditionally — even mid-run.
+  let sum = 0, count = 0;
+  for (const neu of neutrons) {
+    if (neu.collisionsToThermal !== null) {
+      sum += neu.collisionsToThermal;
+      count++;
+    }
+  }
+  const active = countActive();
+  const running = animating || active.thermal + active.fast > 0;
+
+  const record = {
+    material: currentMaterialKey(),
+    materialLabel: MATERIALS[currentMaterialKey()].label,
+    neutronsFired: neutrons.length,
+    fissions: fissionCount,
+    leaked: leakCount,
+    captured: captureCount,
+    activeThermal: active.thermal,
+    activeFast: active.fast,
+    wasRunning: running,
+    cttMean: count > 0 ? sum / count : null,
+    cttSamples: count,
+    thickness: moderatorThickness,
+    initialEnergy: initialEnergyMeV,
+    thermalThreshold: thermalEnergyMeV
+  };
+  records.push(record);
+
+  const tag = running ? ' (in-flight)' : '';
+  setStatus(
+    `Recorded${tag}: ${record.materialLabel} — F ${record.fissions} / L ${record.leaked} / C ${record.captured}` +
+    ` · active T ${record.activeThermal} / F ${record.activeFast}`,
+    running ? '#ffcc66' : '#aaffaa'
+  );
+  if (document.getElementById('table-modal').classList.contains('open')) refreshTable();
+}
+
+function setStatus(msg, colour) {
+  const el = document.getElementById('record-status');
+  el.textContent = msg;
+  el.style.color = colour || '#a0d0ff';
+}
+
+function refreshTable() {
+  const container = document.getElementById('table-container');
+  if (records.length === 0) {
+    container.innerHTML = '<p style="color:#8080a0;font-size:0.9rem;">No results recorded yet. Fire a run (or record mid-run) and click <b>Record results</b>.</p>';
+    return;
+  }
+
+  let html = '<table class="results"><thead><tr><th>Statistic</th>';
+  for (const r of records) {
+    const tag = r.wasRunning ? ' ⏳' : '';
+    html += `<th>${r.materialLabel.replace(' (', '<br>(')}${tag}</th>`;
+  }
+  html += '</tr></thead><tbody>';
+
+  const rows = [
+    ['Status at record', r => r.wasRunning ? 'in-flight' : 'complete'],
+    ['Thickness (px)', r => r.thickness],
+    ['Initial E (MeV)', r => r.initialEnergy.toFixed(2)],
+    ['Thermal floor (eV)', r => (r.thermalThreshold * 1e6).toFixed(1)],
+    ['Neutrons fired', r => r.neutronsFired],
+    ['Fissions', r => r.fissions, 'fission'],
+    ['Leaked', r => r.leaked, 'leak'],
+    ['Captured', r => r.captured, 'capture'],
+    ['Active thermal neutrons', r => r.activeThermal, 'active-thermal'],
+    ['Active fast neutrons', r => r.activeFast, 'active-fast'],
+    ['Mean collisions to thermal', r => r.cttMean === null ? '—' : r.cttMean.toFixed(1), 'thermal']
+  ];
+
+  for (const [label, fn, cls] of rows) {
+    html += `<tr><td class="rowlabel">${label}</td>`;
+    for (const r of records) {
+      const v = fn(r);
+      const isZero = (v === 0 || v === '—' || v === '0.0');
+      const klass = (cls ? cls : '') + (isZero ? ' empty' : '') + ' run-col';
+      html += `<td class="${klass}">${v}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function openTable() {
+  refreshTable();
+  document.getElementById('table-modal').classList.add('open');
+}
+function closeTable() {
+  document.getElementById('table-modal').classList.remove('open');
+}
+function clearTable() {
+  records = [];
+  setStatus('Table cleared.', '#a0d0ff');
+  refreshTable();
+}
+
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); fireRing(); }
+  if (e.code === 'KeyR') { e.preventDefault(); reset(); }
+});
+
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  fireRing();
+});
+
+document.getElementById('moderator').addEventListener('change', reset);
+document.getElementById('thickness').addEventListener('input', e => {
+  moderatorThickness = +e.target.value;
+  reset();
+});
+document.getElementById('ring').addEventListener('input', e => {
+  ringCount = +e.target.value;
+  document.getElementById('ringVal').textContent = ringCount;
+  reset();
+});
+document.getElementById('energy').addEventListener('input', e => {
+  initialEnergyMeV = Math.pow(10, +e.target.value);
+  document.getElementById('energyVal').textContent = initialEnergyMeV.toFixed(2);
+  reset();
+});
+document.getElementById('thermal').addEventListener('input', e => {
+  const eV = Math.pow(10, +e.target.value);
+  thermalEnergyMeV = eV * 1e-6;
+  document.getElementById('thermalVal').textContent = eV.toFixed(1);
+  reset();
+});
+document.getElementById('jitter').addEventListener('change', reset);
+document.getElementById('burst').addEventListener('click', fireRing);
+document.getElementById('reset').addEventListener('click', reset);
+document.getElementById('record').addEventListener('click', recordResults);
+document.getElementById('show-table').addEventListener('click', openTable);
+document.getElementById('clear-table').addEventListener('click', clearTable);
+document.getElementById('close-table').addEventListener('click', closeTable);
+document.getElementById('table-modal').addEventListener('click', e => {
+  if (e.target.id === 'table-modal') closeTable();
+});
+
+window.addEventListener('resize', () => resizeCanvas());
+resizeCanvas();
+</script>
+</body>
+</html>
